@@ -1,0 +1,11 @@
+<?php
+namespace App\Http\Controllers;
+use App\Models\Activity; use App\Models\Course; use App\Models\Student; use App\Models\Submission; use Illuminate\Http\Request;
+class ActivityController extends Controller {
+ public function index(){ $activities=Activity::with('course')->withCount('submissions')->latest()->paginate(10); return view('activities.index',compact('activities')); }
+ public function create(){ $courses=Course::orderBy('code')->get(); return view('activities.create',compact('courses')); }
+ public function store(Request $request){ $data=$request->validate(['course_id'=>'required|exists:courses,id','title'=>'required|string|max:255','description'=>'required|string|max:10000','max_points'=>'required|integer|min:1|max:100000','due_date'=>'required|date']); Activity::create($data); return redirect()->route('activities.index')->with('success','Activity created successfully.'); }
+ public function show(Activity $activity){ $activity->load(['course','submissions.student']); $enrolledIds=$activity->course->students()->pluck('students.id'); $submittedIds=$activity->submissions->pluck('student_id'); $pendingStudents=Student::whereIn('id',$enrolledIds)->whereNotIn('id',$submittedIds)->orderBy('last_name')->get(); return view('activities.show',compact('activity','pendingStudents')); }
+ public function submit(Request $request,Activity $activity){ $data=$request->validate(['student_id'=>'required|exists:students,id','submission_text'=>'required|string|max:20000']); $isEnrolled=$activity->course->students()->where('students.id',$data['student_id'])->exists(); if(!$isEnrolled) return back()->withErrors(['student_id'=>'The selected student is not enrolled in this course.']); if($activity->submissions()->where('student_id',$data['student_id'])->exists()) return back()->withErrors(['student_id'=>'This student already submitted this activity.']); Submission::create(['activity_id'=>$activity->id,'student_id'=>$data['student_id'],'submission_text'=>$data['submission_text'],'submitted_at'=>now()]); return redirect()->route('activities.show',$activity)->with('success','Activity submission recorded.'); }
+ public function destroy(Activity $activity){ $activity->delete(); return redirect()->route('activities.index')->with('success','Activity and submissions deleted.'); }
+}
